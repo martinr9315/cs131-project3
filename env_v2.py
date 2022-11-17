@@ -17,6 +17,18 @@ class EnvironmentManager:
   def __init__(self):
     self.environment = [[{}]]
 
+  def __str__(self):
+    s = ""
+    for func_scope in self.environment:
+      s += '['
+      for scope in func_scope:
+        s += '[{'
+        for k, v in scope.items():
+          s+=str(k)+':'+v.__str__()+' '
+        s += '}]'
+      s += ']'
+    return s
+
   def get(self, symbol):
     nested_envs = self.environment[-1]
     for env in reversed(nested_envs):
