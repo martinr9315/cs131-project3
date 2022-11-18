@@ -234,9 +234,120 @@ lambda_test_1 = [
 ' funccall print resulti    	# prints 52',
 'endfunc']
 
+lambda_test_2 = [
+'func main void',
+' var int capture_me		# captured',
+' assign capture_me 42',
+'',
+' if > capture_me 10',
+'   var int capture_me_too	# also captured',
+'   assign capture_me_too 1000',
+'   lambda a:int int',
+'    return + + a capture_me capture_me_too',
+'   endlambda',
+' endif',
+'',
+' funccall resultf 10		# resultf contains our closure',
+' funccall print resulti		# prints 1052',
+'endfunc']
+
+lambda_copy = [
+'func main void',
+'  var int a',
+'  var object o',
+'',
+'  assign a 5',
+'  assign o.x 10',
+'',
+'  lambda void',
+'    assign a + a 1',
+'    funccall print a        # prints 6',
+'    assign o.x 20',
+'    funccall print o.x      # prints 20',
+'  endlambda',
+'',
+'  var func f',
+'  assign f resultf',
+'  funccall f',
+'',
+'  funccall print a          # prints 5',
+'  funccall print o.x        # prints 10',
+'endfunc'
+]
+
+lambda_nesting = [
+'func main void',
+'  var int capture_me',
+'  assign capture_me 1000',
+'  lambda a:int func			# outer lambda',
+'   var int capture_me2',
+'   assign capture_me2 10000',
+'   lambda b:int int			# nested lambda',
+'    return + + + a capture_me b capture_me2',
+'   endlambda',
+'   return resultf',
+'  endlambda',
+'',
+' var func f g',
+' assign f resultf		# f points at the outer lambda/closure',
+' funccall f 10',
+' assign g resultf		# g points at the inner lambda',
+' funccall g 42',
+' funccall print resulti		# prints 11052',
+'endfunc'
+]
+
+lambda_shadowing = [
+'func main void',
+' var int capture_me',
+' assign capture_me 42',
+'',
+' if > capture_me 10',
+'   var int capture_me',
+'   assign capture_me 1000',
+'   lambda a:int int',
+'    return + a capture_me	# the captured capture_me’s value is 1000',
+'   endlambda',
+' endif',
+'',
+' var func f',
+' assign f resultf',
+' funccall f 10',
+' funccall print resulti		# prints 1010',
+'endfunc'
+]
+
+create_lambda = [
+'# this is in the spec!',
+'',
+'func create_lambda x:int func',
+'  lambda y:int int     # defines a lambda/closure and stores in resultf',
+'    var int z',
+'    assign z + x y',
+'    return z',
+'  endlambda',
+'',
+'  return resultf       # return our lambda/closure',
+'endfunc',
+'',
+'func main void',
+'  var func f g',
+'  funccall create_lambda 10   # create a lambda that captures x=10',
+'  assign f resultf            # f holds our lambdas closure',
+'',
+'  funccall create_lambda 100  # create a lambda that captures x=100',
+'  assign g resultf            # f holds our lambdas closure',
+'',
+'  funccall f 42',
+'  funccall print resulti      # prints 52',
+'',
+'  funccall g 42',
+'  funccall print resulti      # prints 142',
+'endfunc']
+
 
 i = Interpreter(console_output=True, trace_output=True)
-i.run(lambda_test_1)
+i.run(create_lambda)
 
 # [x:(t:Object, v:{})]
 

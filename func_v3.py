@@ -9,6 +9,7 @@ class FunctionManager:
   def __init__(self, tokenized_program):
     self.func_cache = {}
     self.return_types = []  # of each line in the program
+    self.lambda_envs = {}
     self._cache_function_parameters_and_return_type(tokenized_program)
 
   # Returns a FuncInfo for the named function or lambda
@@ -27,6 +28,14 @@ class FunctionManager:
   # the line number where the lambda starts
   def create_lambda_name(self, line_num):
     return InterpreterBase.LAMBDA_DEF + ':' + str(line_num)
+  
+  def get_lambda_env(self, lambda_name):
+    return self.lambda_envs[lambda_name]
+
+  def set_lambda_env(self, line_num, args, env):
+    # this needs to be unique
+    lambda_name = self.create_lambda_name(line_num)
+    self.lambda_envs[lambda_name] = env
 
   # returns the return type for the function in question
   def get_return_type_for_enclosing_function(self, line_num):
@@ -59,6 +68,7 @@ class FunctionManager:
         lambda_name = self.create_lambda_name(line_num)
         lambda_info = FuncInfo(params, line_num + 1)  # function starts executing on line after funcdef
         self.func_cache[lambda_name] = lambda_info
+        # self.lambda_envs[lambda_name] = []
         return_type_stack.append(line[-1])
       
       if line and line[0] == InterpreterBase.ENDLAMBDA_DEF:

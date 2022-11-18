@@ -1,4 +1,5 @@
 from enum import Enum
+import copy
 
 class SymbolResult(Enum):
   OK = 0     # symbol created, didn't exist in top scope
@@ -62,8 +63,6 @@ class EnvironmentManager:
   # used only to populate parameters for a function call
   # and populate captured variables; use first for captured, then params
   # so params shadow captured variables
-
-  # trying this for lambdas 
   def import_mappings(self, dict):
     cur_env = self.environment[-1][-1]
     for symbol, value in dict.items():
@@ -82,8 +81,8 @@ class EnvironmentManager:
     self.environment.pop()
   
   def curr_env(self):
-    return self.environment[-1]
+    return copy.deepcopy(self.environment[-1])
   
-  def copy_curr_env(self):
-    self.environment.append(self.environment[-1])
+  def copy_lambda_env(self, env):
+    self.environment.append(env)
 
