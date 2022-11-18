@@ -1,7 +1,7 @@
 import copy
 from enum import Enum
-from env_v2 import EnvironmentManager, SymbolResult
-from func_v2 import FunctionManager
+from env_v3 import EnvironmentManager, SymbolResult
+from func_v3 import FunctionManager
 from intbase import InterpreterBase, ErrorType
 from tokenize import Tokenizer
 

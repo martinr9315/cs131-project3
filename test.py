@@ -218,9 +218,25 @@ undef_mem_var = [
 '  funccall x.blah 52		# name error; x.blah doesn’t exist',
 'endfunc']
 
+lambda_test_1 = [
+'func main void',
+' var int capture_me',
+' assign capture_me 42',
+'',
+' lambda a:int int                 # defines a lambda for int f(int)',
+'  return + a capture_me		   # captures the capture_me variable',
+' endlambda',
+' # resultf holds the closure created by the lambda',
+'',
+' var func f',
+' assign f resultf			# f now points to the closure',
+' funccall f 10			# calls our lambda function!',
+' funccall print resulti    	# prints 52',
+'endfunc']
+
 
 i = Interpreter(console_output=True, trace_output=True)
-i.run(undef_mem_var)
+i.run(lambda_test_1)
 
 # [x:(t:Object, v:{})]
 

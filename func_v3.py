@@ -25,7 +25,7 @@ class FunctionManager:
 
   # generate a synthetic function name for the lambda function, based on
   # the line number where the lambda starts
-  def create_lambda_name(line_num):
+  def create_lambda_name(self, line_num):
     return InterpreterBase.LAMBDA_DEF + ':' + str(line_num)
 
   # returns the return type for the function in question
@@ -51,6 +51,17 @@ class FunctionManager:
         return_type_stack.append(line[-1])
 
       if line and line[0] == InterpreterBase.ENDFUNC_DEF:
+        reset_after_this_line = True
+      
+      if line and line[0] == InterpreterBase.LAMBDA_DEF:
+        # format:  lambda param1:type1 param2:type2 … return_type
+        params = [self._to_tuple(formal) for formal in line[1:-1]]
+        lambda_name = self.create_lambda_name(line_num)
+        lambda_info = FuncInfo(params, line_num + 1)  # function starts executing on line after funcdef
+        self.func_cache[lambda_name] = lambda_info
+        return_type_stack.append(line[-1])
+      
+      if line and line[0] == InterpreterBase.ENDLAMBDA_DEF:
         reset_after_this_line = True
 
       self.return_types.append(return_type_stack[-1])  # each line in the program is assigned a return type based on

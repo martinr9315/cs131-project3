@@ -1,7 +1,7 @@
 import copy
 from enum import Enum
-from env_v2 import EnvironmentManager, SymbolResult
-from func_v2 import FunctionManager, FuncInfo
+from env_v3 import EnvironmentManager, SymbolResult
+from func_v3 import FunctionManager
 from intbase import InterpreterBase, ErrorType
 from tokenize import Tokenizer
 
@@ -93,6 +93,10 @@ class Interpreter(InterpreterBase):
         self._endwhile(args)
       case InterpreterBase.VAR_DEF: # v2 statements
         self._define_var(args)
+      case InterpreterBase.LAMBDA_DEF:
+        self._lambda(args)
+      case InterpreterBase.ENDLAMBDA_DEF:
+        self._end_lambda(args)
       case default:
         raise Exception(f'Unknown command: {tokens[0]}')
 
@@ -143,7 +147,6 @@ class Interpreter(InterpreterBase):
         return func_var.value()
       super().error(ErrorType.TYPE_ERROR,f"{var} is not a function", self.ip)
 
-
   # create a new environment for a function call
   def _create_new_environment(self, funcname, caller, args):
     formal_params = self.func_manager.get_function_info(funcname)
@@ -166,6 +169,7 @@ class Interpreter(InterpreterBase):
         tmp_mappings[formal_name] = copy.copy(arg)
       
       # if called by member function, inject 'this' 
+      # TODO: should this be tabbed out?? find a test case
       if '.' in caller:
         obj = caller.split('.')[0]
         arg = self._get_value(obj)
@@ -173,7 +177,11 @@ class Interpreter(InterpreterBase):
 
     # create a new environment for the target function
     # and add our parameters to the env
-    self.env_manager.push()
+    if 'lambda' in funcname:
+      self.env_manager.copy_curr_env()
+      self.env_manager.block_nest()  # create new nested block 
+    else:
+      self.env_manager.push()
     self.env_manager.import_mappings(tmp_mappings)
 
   def _endfunc(self, return_val = None):
@@ -190,6 +198,61 @@ class Interpreter(InterpreterBase):
         if return_type != InterpreterBase.VOID_DEF:
           self._set_result(self.type_to_default[return_type])
       self.ip = self.return_stack.pop()
+
+  def _create_new_lambda_environment(self, args):
+
+    tmp_mappings = {}
+    for formal in args:
+      formal_name = formal[0]
+      formal_typename = formal[1]
+      arg = self._get_value(actual)
+      if arg.type() != self.compatible_types[formal_typename]:
+        super().error(ErrorType.TYPE_ERROR,f"Mismatched parameter type for {formal_name} in call to {funcname}", self.ip)
+      if formal_typename in self.reference_types:
+        tmp_mappings[formal_name] = arg
+      else:
+        tmp_mappings[formal_name] = copy.copy(arg)
+      
+      # if called by member function, inject 'this' 
+      if '.' in caller:
+        obj = caller.split('.')[0]
+        arg = self._get_value(obj)
+        tmp_mappings['this'] = arg
+
+    # create a new environment for the target function
+    # and add our parameters to the env
+    self.env_manager.push()
+    self.env_manager.import_mappings(tmp_mappings)
+
+  def _lambda(self, args):
+    #store current environment with everything passed BY VALUE
+    lambda_indent = self.indents[self.ip]
+    cur_line = self.ip + 1
+    while cur_line < len(self.tokenized_program):
+      if self.tokenized_program[cur_line][0] == InterpreterBase.ENDLAMBDA_DEF and self.indents[cur_line] == lambda_indent:
+        self.ip = cur_line
+        return
+      if self.tokenized_program[cur_line] and self.indents[cur_line] < self.indents[self.ip]:
+        break # syntax error!
+      cur_line += 1
+    # didn't find endlambda
+    super().error(ErrorType.SYNTAX_ERROR,"Missing endlambda", self.ip)
+
+  def _end_lambda(self, args):
+    # put returned thing in resultf 
+    lambda_indent = self.indents[self.ip]
+    cur_line = self.ip - 1
+    while cur_line >= 0:
+      if self.tokenized_program[cur_line][0] == InterpreterBase.LAMBDA_DEF and self.indents[cur_line] == lambda_indent:
+        lambda_name = Value(Type.FUNC, self.func_manager.create_lambda_name(cur_line))
+        self._set_result(lambda_name)
+        self._advance_to_next_statement()
+        return
+      if self.tokenized_program[cur_line] and self.indents[cur_line] < self.indents[self.ip]:
+        break # syntax error!
+      cur_line -= 1
+    # didn't find lambda
+    super().error(ErrorType.SYNTAX_ERROR,"Missing lambda", self.ip)
 
   def _if(self, args):
     if not args:
