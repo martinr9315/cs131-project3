@@ -1,7 +1,7 @@
 import copy
 from enum import Enum
 from env_v2 import EnvironmentManager, SymbolResult
-from func_v2 import FunctionManager
+from func_v2 import FunctionManager, FuncInfo
 from intbase import InterpreterBase, ErrorType
 from tokenize import Tokenizer
 
@@ -21,7 +21,12 @@ class Value:
     self.v = value
   
   def __str__(self):
-    return ("(type:" +str(self.t)+", value:"+str(self.v))
+    if self.t == Type.OBJECT and self.v != None:
+      output = {}
+      for k,v in self.v.items():
+        output[k] = v.__str__()
+      return ("(type:" +str(self.t)+", value:"+str(output)+')')
+    return ("(type:" +str(self.t)+", value:"+str(self.v)+')')
 
   def value(self):
     return self.v
@@ -54,7 +59,7 @@ class Interpreter(InterpreterBase):
 
     # main interpreter run loop
     while not self.terminate:
-      print(self.env_manager)
+      # print(self.env_manager)
       self._process_line()
 
   def _process_line(self):
@@ -99,12 +104,16 @@ class Interpreter(InterpreterBase):
      super().error(ErrorType.SYNTAX_ERROR,"Invalid assignment statement")
    vname = tokens[0]
    value_type = self._eval_expression(tokens[1:])
-   existing_value_type = self._get_value(tokens[0])
-   if existing_value_type.type() != value_type.type():
-     super().error(ErrorType.TYPE_ERROR,
-                   f"Trying to assign a variable of {existing_value_type.type()} to a value of {value_type.type()}",
-                   self.ip)
-   self._set_value(tokens[0], value_type)
+   if '.' in vname:
+    obj, member = vname.split('.')
+    self._set_obj_member(obj, member, value_type)
+   else:
+    existing_value_type = self._get_value(tokens[0])
+    if existing_value_type.type() != value_type.type():
+      super().error(ErrorType.TYPE_ERROR,
+                    f"Trying to assign a variable of {existing_value_type.type()} to a value of {value_type.type()}",
+                    self.ip)
+    self._set_value(vname, value_type)
    self._advance_to_next_statement()
 
   def _funccall(self, args):
@@ -121,11 +130,22 @@ class Interpreter(InterpreterBase):
       self._advance_to_next_statement()
     else:
       self.return_stack.append(self.ip+1)
-      self._create_new_environment(args[0], args[1:])  # Create new environment, copy args into new env
-      self.ip = self._find_first_instruction(args[0])
+      funcname = self._fetch_funcvar(args[0])
+      self._create_new_environment(funcname, args[0], args[1:])  # Create new environment, copy args into new env
+      self.ip = self._find_first_instruction(funcname)
+
+  def _fetch_funcvar(self, var):
+    if var in self.func_manager.func_cache:
+      return var
+    else:
+      func_var = self._get_value(var)
+      if func_var.type() == Type.FUNC:
+        return func_var.value()
+      super().error(ErrorType.TYPE_ERROR,f"{var} is not a function", self.ip)
+
 
   # create a new environment for a function call
-  def _create_new_environment(self, funcname, args):
+  def _create_new_environment(self, funcname, caller, args):
     formal_params = self.func_manager.get_function_info(funcname)
     if formal_params is None:
         super().error(ErrorType.NAME_ERROR, f"Unknown function name {funcname}", self.ip)
@@ -144,6 +164,12 @@ class Interpreter(InterpreterBase):
         tmp_mappings[formal_name] = arg
       else:
         tmp_mappings[formal_name] = copy.copy(arg)
+      
+      # if called by member function, inject 'this' 
+      if '.' in caller:
+        obj = caller.split('.')[0]
+        arg = self._get_value(obj)
+        tmp_mappings['this'] = arg
 
     # create a new environment for the target function
     # and add our parameters to the env
@@ -268,7 +294,6 @@ class Interpreter(InterpreterBase):
     # didn't find while
     super().error(ErrorType.SYNTAX_ERROR,"Missing while", self.ip)
 
-
   def _define_var(self, args):
     if len(args) < 2:
       super().error(ErrorType.SYNTAX_ERROR,"Invalid var definition syntax", self.ip)
@@ -318,8 +343,8 @@ class Interpreter(InterpreterBase):
     self.type_to_default[InterpreterBase.STRING_DEF] = Value(Type.STRING,'')
     self.type_to_default[InterpreterBase.BOOL_DEF] = Value(Type.BOOL,False)
     self.type_to_default[InterpreterBase.VOID_DEF] = Value(Type.VOID,None)
-    self.type_to_default[InterpreterBase.FUNC_DEF] = Value(Type.FUNC,None) # TODO: set up this default value
-    self.type_to_default[InterpreterBase.OBJECT_DEF] = Value(Type.OBJECT,{})
+    self.type_to_default[InterpreterBase.FUNC_DEF] = Value(Type.FUNC, '') # TODO: test this default value
+    self.type_to_default[InterpreterBase.OBJECT_DEF] = Value(Type.OBJECT,None)
 
     # set up what types are compatible with what other types
     self.compatible_types = {}
@@ -329,14 +354,19 @@ class Interpreter(InterpreterBase):
     self.compatible_types[InterpreterBase.REFINT_DEF] = Type.INT
     self.compatible_types[InterpreterBase.REFSTRING_DEF] = Type.STRING
     self.compatible_types[InterpreterBase.REFBOOL_DEF] = Type.BOOL
-    self.reference_types = {InterpreterBase.REFINT_DEF, Interpreter.REFSTRING_DEF,
-                            Interpreter.REFBOOL_DEF}
+    self.compatible_types[InterpreterBase.FUNC_DEF] = Type.FUNC
+    self.compatible_types[InterpreterBase.OBJECT_DEF] = Type.OBJECT
 
-    # set up names of result variables: resulti, results, resultb
+    self.reference_types = {InterpreterBase.REFINT_DEF, Interpreter.REFSTRING_DEF,
+                            Interpreter.REFBOOL_DEF, InterpreterBase.OBJECT_DEF}
+
+    # set up names of result variables: resulti, results, resultb, resulto, resultf
     self.type_to_result = {}
     self.type_to_result[Type.INT] = 'i'
     self.type_to_result[Type.STRING] = 's'
     self.type_to_result[Type.BOOL] = 'b'
+    self.type_to_result[Type.OBJECT] = 'o'
+    self.type_to_result[Type.FUNC] = 'f'
 
   # run a program, provided in an array of strings, one string per line of source code
   def _setup_operations(self):
@@ -391,25 +421,45 @@ class Interpreter(InterpreterBase):
       return Value(Type.INT, int(token))
     if token == InterpreterBase.TRUE_DEF or token == Interpreter.FALSE_DEF:
       return Value(Type.BOOL, token == InterpreterBase.TRUE_DEF)
+    
+    # if object attribute assignment is occuring, return the field
     if '.' in token:
-      obj = token.split('.')[0]
+      obj, member = token.split('.')
       val = self.env_manager.get(obj)
-      if val != None:
-        return val
+      if val != None and  val.value() != None:
+        mem = val.value().get(member, None)
+        if mem != None:
+          return mem
 
     # look in environments for variable
     val = self.env_manager.get(token)
     if val != None:
       return val
+
+    # look in FunctionManager for function name
+    if token in self.func_manager.func_cache:
+      return Value(Type.FUNC, token)
+
     # not found
     super().error(ErrorType.NAME_ERROR,f"Unknown variable {token}", self.ip)
 
   # given a variable name and a Value object, associate the name with the value
   def _set_value(self, varname, to_value_type):
-    value_type = self.env_manager.get(varname)
+      value_type = self.env_manager.get(varname)
+      if value_type == None:
+        super().error(ErrorType.NAME_ERROR,f"Assignment of unknown variable {varname}", self.ip)
+      value_type.set(to_value_type)
+
+  def _set_obj_member(self, obj, member, to_value_type):
+    value_type = self.env_manager.get(obj)
     if value_type == None:
-      super().error(ErrorType.NAME_ERROR,f"Assignment of unknown variable {varname}", self.ip)
-    value_type.set(to_value_type)
+      super().error(ErrorType.NAME_ERROR,f"Assignment of unknown variable {obj}", self.ip)
+    elif value_type.type() != Type.OBJECT:
+      super().error(ErrorType.TYPE_ERROR, f"{obj} is not of type object", self.ip) 
+    if value_type.value() == None: 
+      value_type.set(Value(Type.OBJECT, {member: to_value_type}))
+    else:
+      value_type.value().update({member: to_value_type})
 
   # bind the result[s,i,b] variable in the calling function's scope to the proper Value object
   def _set_result(self, value_type):
@@ -446,6 +496,3 @@ class Interpreter(InterpreterBase):
       super().error(ErrorType.SYNTAX_ERROR,f"Invalid expression", self.ip)
 
     return stack[0]
-
-
-# test default func working 
