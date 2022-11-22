@@ -345,9 +345,14 @@ create_lambda = [
 '  funccall print resulti      # prints 142',
 'endfunc']
 
+default_func = [
+'func main void',
+'    var func a',
+'    funccall a',
+'endfunc']
 
 i = Interpreter(console_output=True, trace_output=True)
-i.run(create_lambda)
+i.run(default_func)
 
 # [x:(t:Object, v:{})]
 

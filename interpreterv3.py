@@ -16,9 +16,10 @@ class Type(Enum):
 
 # Represents a value, which has a type and its value
 class Value:
-  def __init__(self, type, value = None):
+  def __init__(self, type, value = None, env = None):
     self.t = type
     self.v = value
+    self.e = env
   
   def __str__(self):
     if self.t == Type.OBJECT and self.v != None:
@@ -26,6 +27,8 @@ class Value:
       for k,v in self.v.items():
         output[k] = v.__str__()
       return ("(type:" +str(self.t)+", value:"+str(output)+')')
+    if self.e != None:
+      return ("(type:" +str(self.t)+", value:"+str(self.v)+", env:"+str(self.e)+')')
     return ("(type:" +str(self.t)+", value:"+str(self.v)+')')
 
   def value(self):
@@ -34,9 +37,13 @@ class Value:
   def set(self, other):
     self.t = other.t
     self.v = other.v
+    self.e = other.e
 
   def type(self):
     return self.t
+  
+  def env(self):
+    return self.e
 
 # Main interpreter class
 class Interpreter(InterpreterBase):
@@ -59,7 +66,7 @@ class Interpreter(InterpreterBase):
 
     # main interpreter run loop
     while not self.terminate:
-      print(self.env_manager)
+      # print(self.env_manager)
       self._process_line()
 
   def _process_line(self):
@@ -135,8 +142,11 @@ class Interpreter(InterpreterBase):
     else:
       self.return_stack.append(self.ip+1)
       funcname = self._fetch_funcvar(args[0])
-      self._create_new_environment(funcname, args[0], args[1:])  # Create new environment, copy args into new env
-      self.ip = self._find_first_instruction(funcname)
+      if funcname != None:
+        self._create_new_environment(funcname, args[0], args[1:])  # Create new environment, copy args into new env
+        self.ip = self._find_first_instruction(funcname)
+      else:
+        self._advance_to_next_statement()
 
   def _fetch_funcvar(self, var):
     if var in self.func_manager.func_cache:
@@ -146,6 +156,12 @@ class Interpreter(InterpreterBase):
       if func_var.type() == Type.FUNC:
         return func_var.value()
       super().error(ErrorType.TYPE_ERROR,f"{var} is not a function", self.ip)
+
+  def _fetch_lambda_env(self, var):
+    func_var = self._get_value(var)
+    if func_var.type() == Type.FUNC:
+      return func_var.env()
+    super().error(ErrorType.TYPE_ERROR,f"{var} is not a lambda", self.ip)
 
   # create a new environment for a function call
   def _create_new_environment(self, funcname, caller, args):
@@ -169,16 +185,17 @@ class Interpreter(InterpreterBase):
         tmp_mappings[formal_name] = copy.copy(arg)
       
       # if called by member function, inject 'this' 
-      # TODO: should this be tabbed out?? find a test case
-      if '.' in caller:
-        obj = caller.split('.')[0]
-        arg = self._get_value(obj)
-        tmp_mappings['this'] = arg
+    # TODO: should this be tabbed out?? find a test case
+    if '.' in caller:
+      obj = caller.split('.')[0]
+      arg = self._get_value(obj)
+      tmp_mappings['this'] = arg
 
     # create a new environment for the target function
     # and add our parameters to the env
     if 'lambda:' in funcname:
-      lambda_env = self.func_manager.get_lambda_env(funcname)
+      lambda_env = self._fetch_lambda_env(caller)
+      # lambda_env = self.func_manager.get_lambda_env(funcname)
       self.env_manager.copy_lambda_env(lambda_env)
       self.env_manager.block_nest()  # create new nested block 
     else:
@@ -203,14 +220,14 @@ class Interpreter(InterpreterBase):
   def _lambda(self, args):
     #store current environment with everything passed BY VALUE
     curr_env = self.env_manager.curr_env()
-    # this needs to be unique
-    self.func_manager.set_lambda_env(self.ip, curr_env)
+    # swapping this for stored env
+    # self.func_manager.set_lambda_env(self.ip, curr_env)
     lambda_indent = self.indents[self.ip]
     cur_line = self.ip + 1
     while cur_line < len(self.tokenized_program):
       if self.tokenized_program[cur_line][0] == InterpreterBase.ENDLAMBDA_DEF and self.indents[cur_line] == lambda_indent:
-        lambda_name = Value(Type.FUNC, self.func_manager.create_lambda_name(self.ip))
-        self._set_result(lambda_name)
+        lambda_val = Value(Type.FUNC, self.func_manager.create_lambda_name(self.ip), curr_env)
+        self._set_result(lambda_val)
         self.ip = cur_line + 1
         return
       if self.tokenized_program[cur_line] and self.indents[cur_line] < self.indents[self.ip]:
@@ -375,7 +392,7 @@ class Interpreter(InterpreterBase):
     self.type_to_default[InterpreterBase.STRING_DEF] = Value(Type.STRING,'')
     self.type_to_default[InterpreterBase.BOOL_DEF] = Value(Type.BOOL,False)
     self.type_to_default[InterpreterBase.VOID_DEF] = Value(Type.VOID,None)
-    self.type_to_default[InterpreterBase.FUNC_DEF] = Value(Type.FUNC, '') # TODO: test this default value
+    self.type_to_default[InterpreterBase.FUNC_DEF] = Value(Type.FUNC, None) 
     self.type_to_default[InterpreterBase.OBJECT_DEF] = Value(Type.OBJECT,None)
 
     # set up what types are compatible with what other types
